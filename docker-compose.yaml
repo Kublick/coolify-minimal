@@ -1,27 +1,60 @@
 services:
+  traefik:
+    image: traefik:3.3.6
+    container_name: traefik
+    command:
+      - "--api.insecure=true" # Dashboard (don't use in production)
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080" # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - app-network
+    restart: unless-stopped
+
   backend:
     build: ./backend
     container_name: hono-backend
-    ports:
-      - "4000:4000"
+    expose:
+      - "4000"
     volumes:
       - ./backend:/app
       - /app/node_modules
     environment:
       - PORT=4000
       - NODE_ENV=development
+    networks:
+      - app-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=PathPrefix(`/api`)"
+      - "traefik.http.services.backend.loadbalancer.server.port=4000"
     restart: unless-stopped
 
   frontend:
     build: ./frontend
     container_name: react-frontend
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - VITE_API_URL=http://localhost:4000
+      - VITE_API_URL=http://localhost
+    networks:
+      - app-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
     depends_on:
       - backend
     restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
